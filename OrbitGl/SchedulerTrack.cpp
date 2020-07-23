@@ -49,7 +49,7 @@ std::string SchedulerTrack::GetTooltip() const {
   return "Shows scheduling information for CPU cores.";
 }
 
-void SchedulerTrack::UpdatePrimitives(uint64_t min_tick, uint64_t max_tick) {
+void SchedulerTrack::UpdatePrimitives(uint64_t min_tick, uint64_t max_tick, bool picking) {
   Batcher* batcher = &time_graph_->GetBatcher();
   GlCanvas* canvas = time_graph_->GetCanvas();
   const TimeGraphLayout& layout = time_graph_->GetLayout();
@@ -120,15 +120,22 @@ void SchedulerTrack::UpdatePrimitives(uint64_t min_tick, uint64_t max_tick) {
                                     is_same_tid_as_selected,
                                     is_same_pid_as_target, is_inactive);
 
-        auto userData = std::make_shared<PickingUserData>(
-          &text_box,
-          [&](PickingID id) -> std::string { return GetBoxTooltip(id); });
-
         if (is_visible_width) {
-          batcher->AddShadedBox(pos, size, z, color, PickingID::BOX, userData);
+          batcher->AddShadedBox(pos, size, z, color, PickingID::BOX,
+            std::make_shared<PickingUserData>(
+              &text_box, 
+              [&](PickingID id) -> std::string { return GetTooltip(id); }
+            )
+          );
         } else {
           auto type = PickingID::LINE;
-          batcher->AddVerticalLine(pos, size[1], z, color, type, userData);
+          batcher->AddVerticalLine(
+            pos, size[1], z, color, type,
+            std::make_shared<PickingUserData>(
+              &text_box,
+              [&](PickingID id) -> std::string { return GetTooltip(id); }
+            )
+          );
           // For lines, we can ignore the entire pixel into which this event
           // falls. We align this precisely on the pixel x-coordinate of the
           // current line being drawn (in ticks).
@@ -143,7 +150,7 @@ void SchedulerTrack::UpdatePrimitives(uint64_t min_tick, uint64_t max_tick) {
   }
 }
 
-std::string SchedulerTrack::GetBoxTooltip(PickingID id) const {
+std::string SchedulerTrack::GetTooltip(PickingID id) const {
   TextBox* textBox = time_graph_->GetBatcher().GetTextBox(id);
   if (textBox) {
     return absl::StrFormat(
