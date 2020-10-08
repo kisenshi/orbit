@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <chrono>
 #include <vector>
 
 #include "ClientGgp.h"
@@ -39,6 +40,8 @@ std::string GetLogFilePath(const std::string& log_directory) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  ClientGgpTimes client_times;
+  client_times.start_ggp_client = std::chrono::steady_clock::now();
   absl::SetProgramUsageMessage("Orbit CPU Profiler Ggp Client");
   absl::SetFlagsUsageConfig(absl::FlagsUsageConfig{{}, {}, {}, &OrbitCore::GetBuildReport, {}});
   absl::ParseCommandLine(argc, argv);
@@ -60,7 +63,7 @@ int main(int argc, char** argv) {
   options.capture_file_name = absl::GetFlag(FLAGS_file_name);
   options.capture_file_directory = absl::GetFlag(FLAGS_file_directory);
 
-  ClientGgp client_ggp(std::move(options));
+  ClientGgp client_ggp(std::move(options), client_times);
   if (!client_ggp.InitClient()) {
     return -1;
   }
@@ -90,6 +93,8 @@ int main(int argc, char** argv) {
   if (!client_ggp.SaveCapture()) {
     return -1;
   }
+
+  client_ggp.LogTimes();
 
   LOG("All done");
   return 0;

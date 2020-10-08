@@ -11,6 +11,7 @@
 
 #include "CaptureData.h"
 #include "ClientGgpOptions.h"
+#include "ClientGgpTimes.h"
 #include "OrbitBase/Result.h"
 #include "OrbitCaptureClient/CaptureClient.h"
 #include "OrbitCaptureClient/CaptureListener.h"
@@ -22,11 +23,12 @@
 
 class ClientGgp final : public CaptureListener {
  public:
-  ClientGgp(ClientGgpOptions&& options);
+  ClientGgp(ClientGgpOptions&& options, ClientGgpTimes times);
   bool InitClient();
   bool RequestStartCapture(ThreadPool* thread_pool);
   bool StopCapture();
   bool SaveCapture();
+  void LogTimes();
 
   // CaptureListener implementation
   void OnCaptureStarted(
@@ -48,6 +50,7 @@ class ClientGgp final : public CaptureListener {
 
  private:
   ClientGgpOptions options_;
+  ClientGgpTimes capture_times_;
   std::shared_ptr<grpc::Channel> grpc_channel_;
   ProcessData target_process_;
   absl::flat_hash_set<std::unique_ptr<ModuleData>> modules_;

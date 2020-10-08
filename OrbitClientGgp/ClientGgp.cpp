@@ -4,7 +4,9 @@
 
 #include "ClientGgp.h"
 
+#include <chrono>
 #include <cstdint>
+#include <ctime>
 #include <limits>
 #include <map>
 #include <memory>
@@ -34,7 +36,8 @@ using orbit_client_protos::TimerInfo;
 using orbit_grpc_protos::ModuleInfo;
 using orbit_grpc_protos::ProcessInfo;
 
-ClientGgp::ClientGgp(ClientGgpOptions&& options) : options_(std::move(options)) {}
+ClientGgp::ClientGgp(ClientGgpOptions&& options, ClientGgpTimes times)
+    : options_(std::move(options)), capture_times_(times) {}
 
 bool ClientGgp::InitClient() {
   if (options_.grpc_server_address.empty()) {
@@ -63,11 +66,13 @@ bool ClientGgp::InitClient() {
   capture_client_ = std::make_unique<CaptureClient>(grpc_channel_, this);
   string_manager_ = std::make_shared<StringManager>();
 
+  capture_times_.client_initialised = std::chrono::steady_clock::now();
   return true;
 }
 
 // Client requests to start the capture
 bool ClientGgp::RequestStartCapture(ThreadPool* thread_pool) {
+  capture_times_.start_capture_requested = std::chrono::steady_clock::now();
   int32_t pid = target_process_.pid();
   if (pid == -1) {
     ERROR(
@@ -95,9 +100,9 @@ bool ClientGgp::RequestStartCapture(ThreadPool* thread_pool) {
   LOG("Capture pid %d", pid);
   TracepointInfoSet selected_tracepoints;
 
+  capture_times_.capture_requested = std::chrono::steady_clock::now();
   ErrorMessageOr<void> result = capture_client_->StartCapture(
       thread_pool, target_process_, module_map_, selected_functions, selected_tracepoints);
-
   if (result.has_error()) {
     ERROR("Error starting capture: %s", result.error().message());
     return false;
@@ -253,6 +258,29 @@ absl::flat_hash_map<uint64_t, FunctionInfo> ClientGgp::GetSelectedFunctions() {
   return selected_functions;
 }
 
+void ClientGgp::LogTimes() {
+  LOG("-------------- TIMES --------------------");
+  auto delay_initialised_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      capture_times_.client_initialised - capture_times_.start_ggp_client);
+  auto delay_requested_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      capture_times_.capture_requested - capture_times_.start_ggp_client);
+  auto delay_request_capture_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      capture_times_.capture_requested - capture_times_.start_capture_requested);
+  auto delay_started_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      capture_times_.capture_started - capture_times_.start_ggp_client);
+
+  LOG("Delay:");
+  LOG("ClientGgp start -- Client initialised: %d ms", delay_initialised_ms.count());
+  LOG("ClientGgp start -- Capture requested: %d ms", delay_requested_ms.count());
+  LOG("RequestStartCapture -- Capture requested: %d ms", delay_request_capture_ms.count());
+  LOG("ClientGgp start -- Capture started: %d ms", delay_started_ms.count());
+
+  // std::chrono::duration<double> time_span =
+  //     std::chrono::duration_cast<std::chrono::duration<double>>(capture_times_.capture_started -
+  //                                                               capture_times_.start_ggp_client);
+  // LOG("ClientGgp start -- capture started seconds: %f", time_span.count());
+}
+
 void ClientGgp::ProcessTimer(const TimerInfo& timer_info) { timer_infos_.push_back(timer_info); }
 
 // CaptureListener implementation
@@ -260,6 +288,7 @@ void ClientGgp::OnCaptureStarted(
     ProcessData&& process, absl::flat_hash_map<std::string, ModuleData*>&& module_map,
     absl::flat_hash_map<uint64_t, orbit_client_protos::FunctionInfo> selected_functions,
     TracepointInfoSet selected_tracepoints) {
+  capture_times_.capture_started = std::chrono::steady_clock::now();
   capture_data_ = CaptureData(std::move(process), std::move(module_map),
                               std::move(selected_functions), std::move(selected_tracepoints));
   LOG("Capture started");
